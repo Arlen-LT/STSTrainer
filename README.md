@@ -11,9 +11,12 @@ A simple trainer for **Slay the Spire** using Java.
 3.  Right-click **Slay the Spire** in Steam -> **Properties** -> **General** -> **Launch Options**.
 4.  Paste the following command:
     ```
-    Path To SlayTheSpire\jre\bin\java -javaagent:STSTrainer.jar -jar desktop-1.0.jar %command%
+    jre\bin\java -javaagent:STSTrainer.jar -jar desktop-1.0.jar %command%
     ```
-    > **Note:** Please replace the path `Path To SlayTheSpire` with your actual game installation directory.
+    Or play with Mod:
+    ```
+    jre\bin\java -javaagent:STSTrainer.jar -jar mts-launcher.jar %command%
+    ```
 5.  Launch the game through Steam.
 
 ---
