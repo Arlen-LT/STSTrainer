@@ -19,6 +19,14 @@ public class STSTrainer {
     private static final String LOG_FILE = "ststrainer.log";
     private static final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    //@formatter:off
+    public static boolean healthMode = true;     // F1
+    public static boolean goldEnabled = true;    // F2
+    public static boolean energyEnabled = true;  // F3
+    public static boolean rareEnabled = true;    // F4
+    public static boolean mapHackEnabled = true; // F5
+    //@formatter:on
+
     public static synchronized void log(String message) {
         try (PrintWriter out = new PrintWriter(new FileWriter(LOG_FILE, true))) {
             String timestamp = dtf.format(LocalDateTime.now());
@@ -124,33 +132,83 @@ public class STSTrainer {
                         changed = true;
                     }
 
-                    // --- 修改 AbstractCard ---
-                    if (dotName.equals("com.megacrit.cardcrawl.cards.AbstractCard")) {
-                        log("Patching AbstractCard...");
-                        CtMethod m = cc.getDeclaredMethod("freeToPlay");
-                        m.insertBefore(
-                                "{ if (com.megacrit.cardcrawl.dungeons.AbstractDungeon.player != null) return true; }");
+                    if (dotName.equals("com.megacrit.cardcrawl.core.CardCrawlGame")) {
+                        // @formatter:off
+                        cc.getDeclaredMethod("update").insertBefore("{ " +
+                                "if (com.badlogic.gdx.Gdx.input != null) { " +
+                                "    boolean _pressed = false; " +
+                                "    boolean _state = false; " +
+
+                                "    if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F1)) { " +
+                                "        STSTrainer.healthMode = !STSTrainer.healthMode; " +
+                                "        _state = STSTrainer.healthMode; _pressed = true; " +
+                                "    } " +
+
+                                "    if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F2)) { " +
+                                "        STSTrainer.goldEnabled = !STSTrainer.goldEnabled; " +
+                                "        _state = STSTrainer.goldEnabled; _pressed = true; " +
+                                "    } " +
+
+                                "    if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F3)) { " +
+                                "        STSTrainer.energyEnabled = !STSTrainer.energyEnabled; " +
+                                "        _state = STSTrainer.energyEnabled; _pressed = true; " +
+                                "    } " +
+
+                                "    if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F4)) { " +
+                                "        STSTrainer.rareEnabled = !STSTrainer.rareEnabled; " +
+                                "        _state = STSTrainer.rareEnabled; _pressed = true; " +
+                                "    } " +
+
+                                "    if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F5)) { " +
+                                "        STSTrainer.mapHackEnabled = !STSTrainer.mapHackEnabled; " +
+                                "        _state = STSTrainer.mapHackEnabled; _pressed = true; " +
+                                "    } " +
+
+                                "    if (_pressed && com.megacrit.cardcrawl.core.CardCrawlGame.sound != null) { " +
+                                "        com.megacrit.cardcrawl.core.CardCrawlGame.sound.play(_state ? \"BUFF_1\" : \"DEBUFF_1\"); " +
+                                "    } " +
+                                "} " +
+                                "}");
+                        // @formatter:on
                         changed = true;
                     }
 
-                    // --- 修改 玩家类 ---
+                    if (dotName.equals("com.megacrit.cardcrawl.cards.AbstractCard")) {
+                        cc.getDeclaredMethod("freeToPlay").insertBefore(
+                                "{ if (STSTrainer.energyEnabled && com.megacrit.cardcrawl.dungeons.AbstractDungeon.player != null) return true; }");
+                        changed = true;
+                    }
+
+                    if (dotName.equals("com.megacrit.cardcrawl.dungeons.AbstractDungeon")) {
+                        cc.getDeclaredMethod("rollRarity", new CtClass[] {})
+                                .insertBefore(
+                                        "{ if (STSTrainer.rareEnabled) { return com.megacrit.cardcrawl.cards.AbstractCard.CardRarity.RARE; } }");
+                        changed = true;
+                    }
+
+                    if (dotName.equals("com.megacrit.cardcrawl.map.MapRoomNode")) {
+                        cc.getDeclaredMethod("isConnectedTo")
+                                .insertBefore("{ if (STSTrainer.mapHackEnabled) { return true; } }");
+                        changed = true;
+                    }
+
                     if (dotName.contains("com.megacrit.cardcrawl.characters")) {
                         if (isSubclassOf(cc, "com.megacrit.cardcrawl.characters.AbstractPlayer")) {
                             log("Patching Player Class: " + dotName);
 
-                            CtMethod mGain = cc.getDeclaredMethod("gainGold");
-                            mGain.insertBefore("{ $1 = $1 * 100; }");
+                            cc.getDeclaredMethod("gainGold")
+                                    .insertBefore("{ if (STSTrainer.goldEnabled) $1 = $1 * 100; }");
 
-                            CtMethod mDamage = cc.getDeclaredMethod("damage");
-                            mDamage.instrument(new ExprEditor() {
+                            cc.getDeclaredMethod("damage").instrument(new ExprEditor() {
                                 public void edit(FieldAccess f) throws CannotCompileException {
                                     if (f.getFieldName().equals("currentHealth") && f.isReader()) {
+                                        // @formatter:off
                                         f.replace("{ " +
                                                 "int realHp = $proceed($$); " +
-                                                "if (realHp < 1) { this.heal(this.maxHealth); $_ = this.currentHealth; } "
-                                                +
+                                                "if (STSTrainer.healthMode && realHp < 1) { this.heal(this.maxHealth); $_ = this.currentHealth; } " +
                                                 "else { $_ = realHp; } " +
                                                 "}");
+                                        // @formatter:on
                                     }
                                 }
                             });
@@ -162,6 +220,7 @@ public class STSTrainer {
                     if (changed) {
                         byte[] b = cc.toBytecode();
                         cc.detach();
+                        log("[STSTrainer] Patching " + dotName + " successful.");
                         return b;
                     }
 
